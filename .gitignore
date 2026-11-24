@@ -1,0 +1,14 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log
+bin/
+dist/
+coverage.out
+/mock-server
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+.agentgate/

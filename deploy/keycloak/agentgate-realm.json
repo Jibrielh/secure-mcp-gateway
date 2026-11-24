@@ -1,0 +1,36 @@
+{
+  "realm": "agentgate",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": false,
+  "roles": {
+    "realm": [
+      {"name": "viewer"},
+      {"name": "developer"},
+      {"name": "admin"},
+      {"name": "approver"}
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "agentgate-workspace",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "dev-only-not-for-production",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://127.0.0.1:8090/api/v1/auth/callback"],
+      "webOrigins": ["http://127.0.0.1:8090"],
+      "attributes": {"pkce.code.challenge.method": "S256"}
+    }
+  ],
+  "users": [
+    {"username": "ada", "enabled": true, "firstName": "Ada", "realmRoles": ["developer"], "credentials": [{"type": "password", "value": "dev-only-not-for-production", "temporary": false}]},
+    {"username": "owen", "enabled": true, "firstName": "Owen", "realmRoles": ["approver"], "credentials": [{"type": "password", "value": "dev-only-not-for-production", "temporary": false}]},
+    {"username": "vera", "enabled": true, "firstName": "Vera", "realmRoles": ["viewer"], "credentials": [{"type": "password", "value": "dev-only-not-for-production", "temporary": false}]},
+    {"username": "amy", "enabled": true, "firstName": "Amy", "realmRoles": ["admin"], "credentials": [{"type": "password", "value": "dev-only-not-for-production", "temporary": false}]}
+  ]
+}

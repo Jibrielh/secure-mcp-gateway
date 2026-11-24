@@ -1,0 +1,122 @@
+name: agentgate
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agentgate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in the local env}
+      POSTGRES_DB: agentgate
+    volumes:
+      - agentgate-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentgate"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--bind", "0.0.0.0", "--protected-mode", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [internal]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set in the local env}
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    ports:
+      - "127.0.0.1:8081:8080"
+    networks: [internal]
+
+  gateway:
+    build: { context: .., dockerfile: Dockerfile }
+    entrypoint: ["gateway"]
+    command:
+      - -listen
+      - 0.0.0.0:8080
+      - -listen-mode
+      - container
+      - -limiter
+      - redis
+      - -store
+      - postgres
+      - -utility-command
+      - /usr/local/bin/mock-server
+      - -data-command
+      - /usr/local/bin/data-server
+      - -github-command
+      - /usr/local/bin/github-server
+      - -sampledb-command
+      - /usr/local/bin/sampledb-server
+      - -sampledb-dsn
+      - file:/tmp/sample.db
+      - -files-command
+      - /usr/local/bin/files-server
+      - -files-root
+      - /app/fixtures/workspace
+    environment:
+      DATABASE_URL: postgres://agentgate:${POSTGRES_PASSWORD}@postgres:5432/agentgate?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      GATEWAY_INTERNAL_SECRET: ${GATEWAY_INTERNAL_SECRET:?set in the local env}
+      GATEWAY_VIEWER_TOKEN: ${GATEWAY_VIEWER_TOKEN:?set in the local env}
+      GATEWAY_DEVELOPER_TOKEN: ${GATEWAY_DEVELOPER_TOKEN:?set in the local env}
+      GATEWAY_ADMIN_TOKEN: ${GATEWAY_ADMIN_TOKEN:?set in the local env}
+      GATEWAY_APPROVER_TOKEN: ${GATEWAY_APPROVER_TOKEN:?set in the local env}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    networks: [internal]
+
+  workspace:
+    build: { context: .., dockerfile: Dockerfile }
+    environment:
+      DATABASE_URL: postgres://agentgate:${POSTGRES_PASSWORD}@postgres:5432/agentgate?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      GATEWAY_INTERNAL_SECRET: ${GATEWAY_INTERNAL_SECRET}
+      GATEWAY_APPROVER_TOKEN: ${GATEWAY_APPROVER_TOKEN}
+      AGENTGATE_GATEWAY_URL: http://gateway:8080/mcp
+      AGENTGATE_PUBLIC_URL: http://127.0.0.1:8090
+      AGENTGATE_DEV_LOGIN: ${AGENTGATE_DEV_LOGIN:-0}
+      AGENTGATE_DEV_PASSWORD: ${AGENTGATE_DEV_PASSWORD:-}
+      OIDC_ISSUER: http://keycloak:8080/realms/agentgate
+      OIDC_BROWSER_ISSUER: http://127.0.0.1:8081/realms/agentgate
+      OIDC_CLIENT_ID: agentgate-workspace
+      OIDC_CLIENT_SECRET: dev-only-not-for-production
+      OIDC_REDIRECT_URL: http://127.0.0.1:8090/api/v1/auth/callback
+      OIDC_AUDIENCE: agentgate-workspace
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+    command: ["-listen", "0.0.0.0:8090", "-listen-mode", "container", "-web-dir", "/app/web/dist", "-store", "postgres", "-provider", "ollama"]
+    ports:
+      - "127.0.0.1:8090:8090"
+    depends_on:
+      - gateway
+      - keycloak
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [internal]
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: ["monitoring"]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks: [internal]
+
+volumes:
+  agentgate-postgres:
+
+networks:
+  internal: {}
